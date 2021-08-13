@@ -51,7 +51,7 @@ open class GitDiffUpToDatePlugin : Plugin<Project> {
     override fun apply(target: Project) {
         // 1) check if Java plugin applied to target (necessary because check on Jar task)
         if (!target.plugins.hasPlugin(JavaPlugin::class.java)) {
-            throw PluginAppliedUnnecessarilyException("")
+            throw PluginAppliedUnnecessarilyException("Plugin shouldn't be applied when Java plugin isn't used!")
         }
 
         // 2) retrieve necessary properties entry
