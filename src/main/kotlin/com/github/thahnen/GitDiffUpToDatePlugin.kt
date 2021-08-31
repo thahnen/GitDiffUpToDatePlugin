@@ -22,6 +22,7 @@ open class GitDiffUpToDatePlugin : Plugin<Project> {
 
     // identifiers of properties connected to this plugin
     private val KEY_CONFIG = "plugins.gitdiffuptodate.config"
+    private val KEY_MANIFEST = "plugins.gitdiffuptodate.evaluateManifest"
 
 
     companion object {
