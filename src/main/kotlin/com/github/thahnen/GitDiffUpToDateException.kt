@@ -12,10 +12,16 @@ open class GitDiffUpToDateException(message: String) : InvalidUserDataException(
 
 
 /**
- *  Thrown when this plugin is applied to a project which does not have the Gradle provided Java plugin applied. This
- *  plugin tests against the project Jar tasks results (only provided by the Java plugin)!
+ *  Exception thrown when Gradle project isn't located inside a Git repository (which is necessary)
  */
-open class PluginAppliedUnnecessarilyException(message: String) : InvalidUserDataException(message)
+open class NoGitRepositoryException(message: String) : GitDiffUpToDateException(message)
+
+
+/**
+ *  Exception thrown when this plugin is applied to a project which does not have the Gradle provided Java plugin
+ *  applied. This plugin tests against the project Jar tasks results (only provided by the Java plugin)!
+ */
+open class PluginAppliedUnnecessarilyException(message: String) : GitDiffUpToDateException(message)
 
 
 /**
@@ -43,3 +49,15 @@ open class TaskConfigurationTaskNameInvalidException(message: String) : GitDiffU
  *  entry does not exist
  */
 open class TaskConfigurationFileOrFolderInvalidException(message: String) : GitDiffUpToDateException(message)
+
+
+/**
+ *  Exception thrown when Jar file not found when trying to read in Manifest file
+ */
+open class JarFileNotFoundException(message: String) : GitDiffUpToDateException(message)
+
+
+/**
+ *  Exception thrown when accessing Jar file throws an IO exception or no Manifest file found inside archive
+ */
+open class JarFileIOException(message: String) : GitDiffUpToDateException(message)

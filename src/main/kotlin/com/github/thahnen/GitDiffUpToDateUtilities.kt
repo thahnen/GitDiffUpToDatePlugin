@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit
  *  Extension to Boolean to create a ternary operator
  *  -> <Condition> ? <to do if true> ?: <to do if false>
  */
+@Suppress("unused")
 internal infix fun <T: Any> Boolean.t(value: T) : T? = if (this) value else null
 
 

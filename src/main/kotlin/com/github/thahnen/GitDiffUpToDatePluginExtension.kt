@@ -1,6 +1,7 @@
 package com.github.thahnen
 
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.SetProperty
 
 
 /**
@@ -15,5 +16,11 @@ import org.gradle.api.provider.Property
 abstract class GitDiffUpToDatePluginExtension {
 
     /** stores all configured tasks of this project and its corresponding files / folder */
-    abstract val tasks: Property<Set<GitDiffUpToDateObject>>
+    abstract val tasks: SetProperty<GitDiffUpToDateObject>
+
+    /** stores if Jar Manifest files should be evaluated */
+    abstract val evaluateManifest : Property<Boolean>
+
+    /** stores if Jar Manifest should contain Commit hashes of Gradle task dependencies */
+    abstract val useFileOrFolderHashes : Property<Boolean>
 }

@@ -16,6 +16,17 @@ class Git {
 
     companion object {
         /**
+         *  Runs "git status" to evaluate of given directory is inside Git repository
+         *
+         *  @param dir path were "git rev-parse" should be run
+         *  @return true if directory inside repository, false otherwise
+         *  @throws IOException when error occurs when invoking command
+         */
+        @Throws(IOException::class)
+        fun status(dir: File) : Boolean = "git status".invokeCommand(dir)
+
+
+        /**
          *  Runs "git rev-parse --verify HEAD" to get the current commit hash
          *
          *  @param dir path were "git rev-parse" should be run
@@ -24,6 +35,21 @@ class Git {
          */
         @Throws(IOException::class)
         fun hash(dir: File) : String = "git rev-parse --verify HEAD".invokeCommandWithOutput(dir)
+
+
+        /**
+         *  Runs "git ls-files --error-unmatch" to check if a given file is tracked using Git
+         *  Also evaluates if a file is outside Git repository
+         *
+         *  @param dir path were "git ls-files" should be run
+         *  @param fileOrFolder which file or folder should be checked
+         *  @return true if tracked & inside Git repository
+         *  @throws IOException when error occurs when invoking command
+         */
+        @Throws(IOException::class)
+        fun tracked(dir: File, fileOrFolder: String) : Boolean {
+            return "git ls-files --error-unmatch $fileOrFolder".invokeCommand(dir)
+        }
 
 
         /**
@@ -43,14 +69,18 @@ class Git {
          *
          *  @param dir path were "git log" should be run
          *  @param fileOrFolder on which file or folder the last commit hash should be returned
-         *  @return commit hash
+         *  @return commit hash or null
          *  @throws IOException when error occurs when invoking command
-         *
-         *  TODO: When file is added before commit this string is empty!
          */
         @Throws(IOException::class)
-        fun commit(dir: File, fileOrFolder: String) : String {
-            return "git log -n 1 --pretty=format:%H -- $fileOrFolder".invokeCommandWithOutput(dir)
+        fun commit(dir: File, fileOrFolder: String) : String? {
+            val hash = "git log -n 1 --pretty=format:%H -- $fileOrFolder".invokeCommandWithOutput(dir)
+            return with (hash) {
+                when {
+                    isEmpty() || isBlank()  -> null
+                    else                    -> this
+                }
+            }
         }
 
 

@@ -19,6 +19,8 @@ plugins.gitdiffuptodate.config = \
   <TaskName 2> : Datei, Ordner 1, Ordner 2
 
 plugins.gitdiffuptodate.evaluateManifest=Boolean
+
+plugins.gitdiffuptodate.useFileOrFolderHashes=Boolean
 ```
 
 Wenn Manifest Property gesetzt ist, wird überprüft ob muss überprüft werden, ob der Commit-Hash in der Manifest-Datei
