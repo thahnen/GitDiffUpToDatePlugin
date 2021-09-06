@@ -6,12 +6,14 @@ import java.io.IOException
 import java.util.Properties
 
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 import org.junit.BeforeClass
 import org.junit.Test
 
+import org.gradle.api.internal.tasks.DefaultTaskOutputs
 import org.gradle.api.plugins.ExtraPropertiesExtension
 import org.gradle.api.plugins.JavaPlugin
 import org.gradle.testfixtures.ProjectBuilder
@@ -345,5 +347,36 @@ open class GitDiffUpToDatePluginTest {
             GitDiffUpToDatePlugin.parseTaskConfigurations(correct2Properties[GitDiffUpToDatePlugin.KEY_CONFIG] as String),
             extension.tasks.get()
         )
+    }
+
+
+    /** 12) Tests applying the plugin and evaluates the UP-TO-DATE status (false) of project_correct2.properties */
+    @Test fun testEvaluateUpToDateFalse() {
+        val project = ProjectBuilder.builder().withProjectDir(location).build()
+
+        // apply Java plugin
+        project.pluginManager.apply(JavaPlugin::class.java)
+
+        // project gradle.properties reference (can not be used directly!)
+        val propertiesExtension = project.extensions.getByType(ExtraPropertiesExtension::class.java)
+        correct2Properties.keys.forEach { key ->
+            propertiesExtension[key as String] = correct2Properties.getProperty(key)
+        }
+
+        // create new task as mentioned in properties file
+        project.tasks.create("testTask")
+
+        // apply plugin
+        project.pluginManager.apply(GitDiffUpToDatePlugin::class.java)
+
+        // get created task and assert that outputs UP-TO-DATE condition is false
+        val task = project.tasks.getByName("testTask")
+
+        assertEquals(DefaultTaskOutputs::class, task.outputs::class)
+        val upToDateSpec = (task.outputs as DefaultTaskOutputs).upToDateSpec
+
+        assertFalse(upToDateSpec.isEmpty)
+
+        // INFO: Cannot evaluate using upToDateSpec if condition evaluates to true or false :(
     }
 }

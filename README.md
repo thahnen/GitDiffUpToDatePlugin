@@ -1,8 +1,8 @@
 # GitDiffUpToDatePlugin
 
-![example workflow](https://github.com/thahnen/UniformDependenciesPlugin/actions/workflows/gradle.yml/badge.svg)
-![example workflow](https://github.com/thahnen/UniformDependenciesPlugin/actions/workflows/gradle_validation.yml/badge.svg)
-[![Coverage](.github/badges/jacoco.svg)](https://github.com/thahnen/UniformDependenciesPlugin/actions/workflows/gradle.yml)
+![example workflow](https://github.com/thahnen/GitDiffUpToDatePlugin/actions/workflows/gradle.yml/badge.svg)
+![example workflow](https://github.com/thahnen/GitDiffUpToDatePlugin/actions/workflows/gradle_validation.yml/badge.svg)
+[![Coverage](.github/badges/jacoco.svg)](https://github.com/thahnen/GitDiffUpToDatePlugin/actions/workflows/gradle.yml)
 
 Configure Gradle tasks of project to be UP-TO-DATE depending on Git diff result of files / folders provided to this
 plugin. Circumventing boundaries which maybe cannot be solved at all or only by extensive configuration in Gradle.
