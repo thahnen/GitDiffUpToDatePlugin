@@ -45,7 +45,7 @@ open class GitDiffUpToDatePlugin : Plugin<Project> {
         internal fun parseTaskConfigurations(config: String) : Set<GitDiffUpToDateObject> {
             val taskConfigurations: MutableSet<GitDiffUpToDateObject> = mutableSetOf()
 
-            config.trim().split(";").forEach {
+            config.replace(" ", "").split(";").forEach {
                 val (taskName: String, filesOrFolders: String) = it.split(":", limit = 2)
 
                 taskConfigurations.add(GitDiffUpToDateObject(
