@@ -43,6 +43,9 @@ the user:
 
 ## Usage
 
+To find out how to apply this plugin to your Gradle project see the information over at the
+[Gradle Plugin Portal](https://plugins.gradle.org/plugin/com.github.thahnen.gitdiffuptodate)!
+
 To use this plugin you only need to apply it and hand over a simple configuration inside the projects gradle.properties
 file including, as mentioned, a task after the possible blackbox and the necessary input files or folders:
 
