@@ -38,8 +38,8 @@ internal fun String.invokeCommandWithOutput(workingDir: File) : String {
                     .start()
                     .also { it.waitFor(60, TimeUnit.SECONDS) }
 
-    when (process.exitValue()) {
-        0   -> throw IOException("Exit value != 0 -> ${process.exitValue()}")
+    if (process.exitValue() != 0) {
+        throw IOException("Exit value != 0 -> ${process.exitValue()}")
     }
 
     return process.inputStream.bufferedReader().readText()
