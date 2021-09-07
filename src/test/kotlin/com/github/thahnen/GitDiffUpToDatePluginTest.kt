@@ -63,8 +63,6 @@ open class GitDiffUpToDatePluginTest {
             wrong1Properties.load(FileInputStream(wrong1ProjectPropertiesPath))
             wrong2Properties.load(FileInputStream(wrong2ProjectPropertiesPath))
             wrong3Properties.load(FileInputStream(wrong3ProjectPropertiesPath))
-
-            println("location -> $location")
         }
     }
 
