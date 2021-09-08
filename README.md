@@ -51,10 +51,11 @@ file including, as mentioned, a task after the possible blackbox and the necessa
 
 
 ```properties
-# Necessary property: Map of task by name to necessary files or folders
+# Necessary property: Map of task by name to necessary files or folders and artifact task
 # INFO: All paths must be relative to project directory!
+# INFO: Providing the name of an artifact task is optional!
 plugins.gitdiffuptodate.config=\
-  <task name> : folder, file 1, file 2;\
+  <task name> : folder, file 1, file 2 : <artifact task name> ;\
   <task name> : file 1, file 2, folder 1, folder 2
 
 # Optional property: When working with tasks of type Jar should the Manifest file be evaluated, defaults to true

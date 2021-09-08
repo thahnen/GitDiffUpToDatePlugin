@@ -15,6 +15,8 @@ import java.util.jar.Manifest
  *  Class to handle interaction with Jar, mainly Manifest file
  *
  *  @author thahnen
+ *
+ *  TODO: Refactor to "BundleHandler"!
  */
 open class JarHandler(jarFile: File) {
 

@@ -32,9 +32,15 @@ open class MissingPropertiesEntryException(message: String) : GitDiffUpToDateExc
 
 
 /**
- *  Exception thrown when value of necessary properties entry is invalid (no content)
+ *  Exception thrown when value of necessary property entry is invalid (no content)
  */
 open class PropertiesEntryInvalidException(message: String) : GitDiffUpToDateException(message)
+
+
+/**
+ *  Exception thrown when content of property is invalid (multiple reasons)
+ */
+open class PropertyContentInvalidException(message: String) : GitDiffUpToDateException(message)
 
 
 /**
@@ -49,6 +55,13 @@ open class TaskConfigurationTaskNameInvalidException(message: String) : GitDiffU
  *  entry does not exist
  */
 open class TaskConfigurationFileOrFolderInvalidException(message: String) : GitDiffUpToDateException(message)
+
+
+/**
+ *  Exception thrown when optional artifact task name provided in necessary property entry to be configured using this
+ *  plugin could not be found in project tasks list
+ */
+open class TaskConfigurationArtifactTaskNameInvalidException(message: String) : GitDiffUpToDateException(message)
 
 
 /**
