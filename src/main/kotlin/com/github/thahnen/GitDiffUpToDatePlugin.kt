@@ -307,8 +307,10 @@ open class GitDiffUpToDatePlugin : Plugin<Project> {
                 target, target.file("${task.destinationDirectory}/${task.archiveFileName}"),
                 filesOrFolders, evaluateManifest //, useFileOrFolderHashes
             )) {
-            task.dependsOn.clear()
-            task.outputs.upToDateWhen { true }
+            target.afterEvaluate {
+                task.dependsOn.clear()
+                task.outputs.upToDateWhen { true }
+            }
         }
     }
 
@@ -341,8 +343,10 @@ open class GitDiffUpToDatePlugin : Plugin<Project> {
                 target, target.file("${artifactTask.destinationDirectory}/${artifactTask.archiveFileName}"),
                 filesOrFolders, evaluateManifest //, useFileOrFolderHashes
             )) {
-            task.dependsOn.clear()
-            task.outputs.upToDateWhen { true }
+            target.afterEvaluate {
+                task.dependsOn.clear()
+                task.outputs.upToDateWhen { true }
+            }
         }
     }
 

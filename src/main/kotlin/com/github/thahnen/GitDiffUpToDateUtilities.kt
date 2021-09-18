@@ -42,5 +42,5 @@ internal fun String.invokeCommandWithOutput(workingDir: File) : String {
         throw IOException("Exit value != 0 -> ${process.exitValue()}")
     }
 
-    return process.inputStream.bufferedReader().readText()
+    return process.inputStream.bufferedReader().readText().trim()
 }
