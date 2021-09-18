@@ -14,6 +14,7 @@ import org.gradle.plugins.ear.Ear
 import org.gradle.plugins.ear.EarPlugin
 
 import org.gradle.kotlin.dsl.create
+import org.gradle.kotlin.dsl.withGroovyBuilder
 
 
 /**
@@ -255,6 +256,32 @@ open class GitDiffUpToDatePlugin : Plugin<Project> {
 
 
     /**
+     *  Handle Ant task but with a bundled artifact task with dependencies
+     *
+     *  @param target the project which the plugin is applied to, may be sub-project
+     *  @param task normal task
+     *  @param artifactTask bundle task in project
+     *  @param filesOrFolders necessary dependencies for bundle task
+     *  @param upToDateProperty
+     *
+     *  TODO: Extend with manifest attribute handling!
+     */
+    @Suppress("unused")
+    private fun <T: Jar> handleAntTask(target: Project, task: Task, artifactTask: T, filesOrFolders: Set<String>,
+                                       upToDateProperty: String) {
+        task.ant.withGroovyBuilder {
+            filesOrFolders.forEach {
+                "uptodate"(
+                    "property" to upToDateProperty,
+                    "srcfile" to "${target.projectDir}/$it",
+                    "targetfile" to "${artifactTask.destinationDirectory}/${artifactTask.archiveFileName}"
+                )
+            }
+        }
+    }
+
+
+    /**
      *  Handle a bundled task with dependencies
      *
      *  @param target the project which the plugin is applied to, may be sub-project
@@ -275,12 +302,13 @@ open class GitDiffUpToDatePlugin : Plugin<Project> {
             }
         }
 
-        // set UP-TO-DATE status using evaluation function
-        task.outputs.upToDateWhen {
-            evaluateConditionForBundledTask(
+        // set UP-TO-DATE status & remove dependsOn using evaluation function
+        if (evaluateConditionForBundledTask(
                 target, target.file("${task.destinationDirectory}/${task.archiveFileName}"),
                 filesOrFolders, evaluateManifest //, useFileOrFolderHashes
-            )
+            )) {
+            task.dependsOn.clear()
+            task.outputs.upToDateWhen { true }
         }
     }
 
@@ -308,12 +336,13 @@ open class GitDiffUpToDatePlugin : Plugin<Project> {
             }
         }
 
-        // set normal task UP-TO-DATE status using evaluation function
-        task.outputs.upToDateWhen {
-            evaluateConditionForBundledTask(
+        // set UP-TO-DATE status & remove dependsOn using evaluation function
+        if (evaluateConditionForBundledTask(
                 target, target.file("${artifactTask.destinationDirectory}/${artifactTask.archiveFileName}"),
                 filesOrFolders, evaluateManifest //, useFileOrFolderHashes
-            )
+            )) {
+            task.dependsOn.clear()
+            task.outputs.upToDateWhen { true }
         }
     }
 
