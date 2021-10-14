@@ -1,4 +1,4 @@
-package com.github.thahnen
+package com.github.thahnen.util
 
 import java.security.MessageDigest
 
@@ -11,7 +11,8 @@ import java.security.MessageDigest
  *
  *  @author thahnen
  */
-open class SHA256 {
+sealed class SHA256 {
+
     companion object {
         /**
          *  Hashes a given string using the SHA-256 hashing function

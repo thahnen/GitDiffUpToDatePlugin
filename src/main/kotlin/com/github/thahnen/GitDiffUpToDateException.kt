@@ -74,3 +74,17 @@ open class JarFileNotFoundException(message: String) : GitDiffUpToDateException(
  *  Exception thrown when accessing Jar file throws an IO exception or no Manifest file found inside archive
  */
 open class JarFileIOException(message: String) : GitDiffUpToDateException(message)
+
+
+/**
+ *  Exception thrown when wrong GitDiffUpToDateObject subtype is provided as parameter!
+ *  -> only for myself
+ */
+internal open class EvaluateFilesOrFoldersException(message: String) : GitDiffUpToDateException(message)
+
+
+/**
+ *  Exception thrown when wrong GitDiffUpToDateObject subtype is provided as parameter!
+ *  -> only for myself
+ */
+internal open class EvaluateArtifactTaskException(message: String) : GitDiffUpToDateException(message)

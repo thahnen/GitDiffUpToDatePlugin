@@ -1,20 +1,18 @@
 package com.github.thahnen
 
-import java.io.File
-import java.nio.file.Paths
-
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.Task
 import org.gradle.api.plugins.JavaPlugin
-import org.gradle.api.plugins.WarPlugin
 import org.gradle.api.tasks.bundling.Jar
-import org.gradle.api.tasks.bundling.War
-import org.gradle.plugins.ear.Ear
-import org.gradle.plugins.ear.EarPlugin
 
 import org.gradle.kotlin.dsl.create
-import org.gradle.kotlin.dsl.withGroovyBuilder
+
+import com.github.thahnen.config.Evaluator
+import com.github.thahnen.config.GradleProperties
+import com.github.thahnen.config.Parser
+import com.github.thahnen.handler.Ant
+import com.github.thahnen.handler.Gradle
+import com.github.thahnen.util.Git
 
 
 /**
@@ -30,51 +28,24 @@ import org.gradle.kotlin.dsl.withGroovyBuilder
  *          - evaluateManifest      -> if Manifest file of Jar files created by Jar tasks should be evaluated
  *          - useFileOrFolderHashes -> if commit hashes of dependencies should be stored / evaluated in Manifest file
  *
+ *  TODO: Diese Doku überarbeiten
+ *
  *  @author thahnen
  */
-open class GitDiffUpToDatePlugin : Plugin<Project> {
+sealed class GitDiffUpToDatePlugin : Plugin<Project> {
 
     companion object {
-        // identifiers of properties connected to this plugin
-        internal val KEY_CONFIG     = "plugins.gitdiffuptodate.config"
-        internal val KEY_MANIFEST   = "plugins.gitdiffuptodate.evaluateManifest"
-        internal val KEY_FOFHASHES  = "plugins.gitdiffuptodate.useFileOrFolderHashes"
-
         // extension name
         internal val KEY_EXTENSION = "GitDiffUpToDateExtension"
 
+
         /**
-         *  Parses the configuration property used by this plugin to set of GitDiffUpToDateObjects
+         *  Parses any nullable String to Boolean
          *
-         *  @param config necessary properties entry (not empty / blank)
-         *  @return set of task configurations (task -> Set<file / folder path> + optional artifact task
-         *  @throws PropertyContentInvalidException when a config does not contain at least task name / files or folders
+         *  @param input nullable string
+         *  @return string converted to Boolean, defaults to false on null
          */
-        @Throws(PropertyContentInvalidException::class)
-        internal fun parseTaskConfigurations(config: String) : Set<GitDiffUpToDateObject> {
-            val taskConfigurations: MutableSet<GitDiffUpToDateObject> = mutableSetOf()
-
-            config.replace(" ", "").split(";").forEach {
-                val list = it.split(":")
-                if (list.size < 2 || list.size > 3) {
-                    throw PropertyContentInvalidException("Task configuration provided: '$it' is invalid!")
-                }
-
-                val taskName = list[0]
-                val filesOrFolders = list[1]
-
-                taskConfigurations.add(GitDiffUpToDateObject(
-                    taskName,
-                    filesOrFolders.split(",").map { fileOrFolder -> fileOrFolder.trim() }.toSet(),
-                    when (list.size) {
-                        3       -> list[2]
-                        else    -> null
-                    }
-                ))
-            }
-
-            return taskConfigurations
-        }
+        internal fun parseBooleanString(input: String?) : Boolean = input?.let { input.toBoolean() } ?: false
     }
 
 
@@ -83,345 +54,189 @@ open class GitDiffUpToDatePlugin : Plugin<Project> {
         // 1) check if project directory is inside Git repository (otherwise Git commands can't execute)
         if (!Git.status(target.projectDir)) {
             throw NoGitRepositoryException(
-                "Plugin must be applied to a Gradle project located inside a Git repository to run the commands!"
+                "[${this::class.simpleName}.${this::apply.name}] Plugin must be applied to " +
+                "a Gradle project located inside a Git repository to run the necessary commands to calculate any " +
+                "UP-TO-DATE status!"
             )
         }
 
-
         // 2) check if Java plugin applied to target (necessary because check on Jar task)
         if (!target.plugins.hasPlugin(JavaPlugin::class.java)) {
-            throw PluginAppliedUnnecessarilyException("Plugin shouldn't be applied when Java plugin isn't used!")
+            throw PluginAppliedUnnecessarilyException(
+                "[${this::class.simpleName}.${this::apply.name}] Plugin should not be applied when Java plugin not " +
+                "already applied. It is necessary for at least 75% of this plugins logic!"
+            )
         }
 
+        // 3) retrieve necessary Ant properties entries
+        val antConfigSimple = GradleProperties.getLocalPropertiesEntry(target, GradleProperties.antConfigSimple)
+        val antConfigAdvanced = GradleProperties.getLocalPropertiesEntry(target, GradleProperties.antConfigAdvanced)
+        val antEvaluateManifest = parseBooleanString(
+            GradleProperties.getGlobalPropertiesEntry(target, GradleProperties.antEvaluateManifest)
+        )
+        val antUseFileOrFolderHashes = parseBooleanString(
+            GradleProperties.getGlobalPropertiesEntry(target, GradleProperties.antUseFileOrFolderHashes)
+        )
+        val antUseSrcResourcesBlock = parseBooleanString(
+            GradleProperties.getGlobalPropertiesEntry(target, GradleProperties.antUseSrcResourcesBlock)
+        )
 
-        // 3) check if WAR / EAR plugin applied to target (not necessary but can be configured)
-        val warPluginApplied = target.plugins.hasPlugin(WarPlugin::class.java)
-        val earPluginApplied = target.plugins.hasPlugin(EarPlugin::class.java)
+        // 4) retrieve necessary Gradle properties entries
+        val gradleConfigSimple = GradleProperties.getLocalPropertiesEntry(target, GradleProperties.gradleConfigSimple)
+        val gradleConfigAdvanced = GradleProperties.getLocalPropertiesEntry(target, GradleProperties.gradleConfigAdvanced)
+        val gradleEvaluateManifest = parseBooleanString(
+            GradleProperties.getGlobalPropertiesEntry(target, GradleProperties.gradleEvaluateManifest)
+        )
+        val gradleUseFileOrFolderHashes = parseBooleanString(
+            GradleProperties.getGlobalPropertiesEntry(target, GradleProperties.gradleUseFileOrFolderHashes)
+        )
+        val gradleSkipTaskGraph = parseBooleanString(
+            GradleProperties.getGlobalPropertiesEntry(target, GradleProperties.gradleSkipTaskGraph)
+        )
 
-
-        // 4) retrieve necessary properties entries
-        val config = getPropertiesEntry(target, KEY_CONFIG)
-        if (config.isEmpty() || config.isBlank()) {
-            throw PropertiesEntryInvalidException("$KEY_CONFIG provided but invalid (empty / blank)!")
+        // 5) check that at least on configuration provided
+        multipleNull(antConfigSimple, antConfigAdvanced, gradleConfigSimple, gradleConfigAdvanced) {
+            throw MissingPropertiesEntryException(
+                "[${this::class.simpleName}.${this::apply.name}] No configuration provided for Ant / Gradle tasks " +
+                "using properties '${GradleProperties.antConfigSimple}' / '${GradleProperties.antConfigAdvanced}' / " +
+                "'${GradleProperties.gradleConfigSimple}' / '${GradleProperties.gradleConfigAdvanced}'! At least one " +
+                "configuration must be provided otherwise applying this plugin is unnecessary!"
+            )
         }
 
-        var evaluateManifest = true
-        try {
-            val evaluateManifestString = getPropertiesEntry(target, KEY_MANIFEST)
-            if (evaluateManifestString.isEmpty() || evaluateManifestString.isBlank()) {
-                throw PropertiesEntryInvalidException("$KEY_MANIFEST provided but invalid (empty / blank)!")
-            }
-            evaluateManifest = evaluateManifestString.toBoolean()
-        } catch (ignored: MissingPropertiesEntryException) { }
+        // 6) parse configurations
+        val antSimpleConfigurations = antConfigSimple?.let { Parser.parseAntSimpleConfig(target, it) }
+        val antAdvancedConfigurations = antConfigAdvanced?.let { Parser.parseAntAdvancedConfig(target, it) }
+        val gradleSimpleConfigurations = gradleConfigSimple?.let { Parser.parseGradleSimpleConfig(target, it) }
+        val gradleAdvancedConfigurations = gradleConfigAdvanced?.let { Parser.parseGradleAdvancedConfig(target, it) }
 
-        var useFileOrFolderHashes = false
-        try {
-            val useFileOrFolderHashesString = getPropertiesEntry(target, KEY_FOFHASHES)
-            if (useFileOrFolderHashesString.isEmpty() || useFileOrFolderHashesString.isBlank()) {
-                throw PropertiesEntryInvalidException("$KEY_FOFHASHES provided but invalid (empty / blank)!")
-            }
-            useFileOrFolderHashes = useFileOrFolderHashesString.toBoolean()
-        } catch (ignored: MissingPropertiesEntryException) { }
-
-
-        // 5) parse configuration string to actual task configuration & evaluate correctness
-        val taskConfigurations = parseTaskConfigurations(config)
-        taskConfigurations.forEach {
-            target.tasks.findByName(it.taskName) ?: run {
-                throw TaskConfigurationTaskNameInvalidException(
-                    "Task ${it.taskName} could not be found for configuration in project ${target.name}!"
-                )
-            }
-
-            it.filesOrFolders.forEach { fileOrFolder ->
-                if (!target.file("${target.projectDir}/$fileOrFolder").exists()) {
-                    throw TaskConfigurationFileOrFolderInvalidException(
-                        "File / folder $fileOrFolder  connected to task ${it.taskName} does not exist relative to " +
-                        "project directory!"
-                    )
+        // 7) evaluate correctness of configurations
+        antSimpleConfigurations?.let {
+            it.forEach { config ->
+                with (GradleProperties.antConfigSimple) {
+                    Evaluator.evaluateInputTaskName(target, this, config)
+                    Evaluator.evaluateFilesOrFolders(target, this, config, true)
+                    Evaluator.evaluateFilesOrFolders(target, this, config, false)
                 }
             }
+        }
 
-            it.artifactTaskName?.let { name ->
-                target.tasks.findByName(name) ?: run {
-                    throw TaskConfigurationArtifactTaskNameInvalidException(
-                        "Artifact task $name could not be found for configuration in project ${target.name}!"
-                    )
+        antAdvancedConfigurations?.let {
+            it.forEach { config ->
+                with (GradleProperties.antConfigAdvanced) {
+                    Evaluator.evaluateInputTaskName(target, this, config)
+                    Evaluator.evaluateFilesOrFolders(target, this, config, true)
+                    Evaluator.evaluateArtifactTask(target, this, config)
                 }
             }
         }
 
+        gradleSimpleConfigurations?.let {
+            it.forEach { config ->
+                with (GradleProperties.gradleConfigSimple) {
+                    Evaluator.evaluateInputTaskName(target, this, config)
+                    Evaluator.evaluateFilesOrFolders(target, this, config, true)
+                    Evaluator.evaluateFilesOrFolders(target, this, config, false)
+                }
+            }
+        }
 
-        // 6) custom extension to store the data
+        gradleAdvancedConfigurations?.let {
+            it.forEach { config ->
+                with (GradleProperties.gradleConfigAdvanced) {
+                    Evaluator.evaluateInputTaskName(target, this, config)
+                    Evaluator.evaluateFilesOrFolders(target, this, config, true)
+                    Evaluator.evaluateArtifactTask(target, this, config)
+                }
+            }
+        }
+
+        // 8) custom extension to store the data
         val extension = target.extensions.create<GitDiffUpToDatePluginExtension>(KEY_EXTENSION)
-        extension.tasks.set(taskConfigurations)
-        extension.evaluateManifest.set(evaluateManifest)
-        extension.useFileOrFolderHashes.set(useFileOrFolderHashes)
+        antSimpleConfigurations?.let { extension.antConfigSimple.set(it) }
+        antAdvancedConfigurations?.let { extension.antConfigAdvanced.set(it) }
+        gradleSimpleConfigurations?.let { extension.gradleConfigSimple.set(it) }
+        gradleAdvancedConfigurations?.let { extension.gradleConfigAdvanced.set(it) }
+        extension.antEvaluateManifest.set(antEvaluateManifest)
+        extension.antUseFileOrFolderHashes.set(antUseFileOrFolderHashes)
+        extension.antUseSrcResourcesBlock.set(antUseSrcResourcesBlock)
+        extension.gradleEvaluateManifest.set(gradleEvaluateManifest)
+        extension.gradleUseFileOrFolderHashes.set(gradleUseFileOrFolderHashes)
+        extension.gradleSkipTaskGraph.set(gradleSkipTaskGraph)
 
-
-        // 7) configure each task based on its files / folders
-        taskConfigurations.forEach { task ->
-            target.tasks.getByName(task.taskName) {
-                when {
-                    this is Jar                     -> handleBundledTask(
-                        target, this, task.filesOrFolders, evaluateManifest, useFileOrFolderHashes
-                    )
-                    warPluginApplied && this is War -> handleBundledTask(
-                        target, this, task.filesOrFolders, evaluateManifest, useFileOrFolderHashes
-                    )
-                    earPluginApplied && this is Ear -> handleBundledTask(
-                        target, this, task.filesOrFolders, evaluateManifest, useFileOrFolderHashes
-                    )
-                    else                            -> {
-                        task.artifactTaskName?.let {
-                            val normalTask = this
-
-                            target.tasks.getByName(it) {
-                                when {
-                                    this is Jar                     -> handleBundledArtifactTask(
-                                        target, normalTask, this, task.filesOrFolders, evaluateManifest,
-                                        useFileOrFolderHashes
-                                    )
-                                    warPluginApplied && this is War -> handleBundledArtifactTask(
-                                        target, normalTask, this, task.filesOrFolders, evaluateManifest,
-                                        useFileOrFolderHashes
-                                    )
-                                    earPluginApplied && this is Ear -> handleBundledArtifactTask(
-                                        target, normalTask, this, task.filesOrFolders, evaluateManifest,
-                                        useFileOrFolderHashes
-                                    )
-                                    else                            -> {
-                                        // Artifact task provided but not of type Jar / War / Ear so only check if files
-                                        // or folders haven't changed & output files exists!
-                                        // -> Can cause problems, so be warned!
-                                        target.logger.warn(
-                                            "[${this@GitDiffUpToDatePlugin::class.simpleName}] Provided an artifact " +
-                                            "task but is not of type Jar (or when corresponding plugin applied of " +
-                                            "type War or Ear) which can lead to incomprehensible compile or even " +
-                                            "runtime exceptions / errors! With this message you've been warned and " +
-                                            "my job here is done!"
-                                        )
-
-                                        outputs.upToDateWhen {
-                                            outputs.files.all { output ->
-                                                output.exists()
-                                            } && task.filesOrFolders.all {
-                                                fileOrFolder -> Git.diff(target.projectDir, fileOrFolder)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        } ?: run {
-                            // No artifact task provided so only check if files or folders haven't changed!
-                            // -> Can cause problems, so be warned!
-                            target.logger.warn(
-                                "[${this@GitDiffUpToDatePlugin::class.simpleName}] Providing no artifact task name " +
-                                "can lead to incomprehensible compile or even runtime exceptions / errors! With this " +
-                                "message you've been warned and my job here is done!"
-                            )
-
-                            outputs.upToDateWhen {
-                                task.filesOrFolders.all { fileOrFolder -> Git.diff(target.projectDir, fileOrFolder) }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-
-    /**
-     *  Tries to retrieve the necessary properties file entry (can be provided as system property / environment variable
-     *  as well)
-     *
-     *  @param target the project which the plugin is applied to, may be sub-project
-     *  @param propertyKey the key of the property which entry should be retrieved
-     *  @return content of properties entry
-     *  @throws MissingPropertiesEntryException when necessary properties' entry not found / provided
-     */
-    @Throws(MissingPropertiesEntryException::class)
-    private fun getPropertiesEntry(target: Project, propertyKey: String) : String {
-        return when {
-            target.properties.containsKey(propertyKey)              -> target.properties[propertyKey]
-            target.rootProject.properties.containsKey(propertyKey)  -> target.rootProject.properties[propertyKey]
-            System.getProperties().containsKey(propertyKey)         -> System.getProperties()[propertyKey]
-            System.getenv().containsKey(propertyKey)                -> System.getenv(propertyKey)
-            else                                                    -> throw MissingPropertiesEntryException(
-                                                                            "$propertyKey not provided to plugin!"
-                                                                        )
-        } as String
-    }
-
-
-    /**
-     *  Handle Ant task but with a bundled artifact task with dependencies
-     *
-     *  @param target the project which the plugin is applied to, may be sub-project
-     *  @param task normal task
-     *  @param artifactTask bundle task in project
-     *  @param filesOrFolders necessary dependencies for bundle task
-     *  @param upToDateProperty
-     *
-     *  TODO: Extend with manifest attribute handling!
-     */
-    @Suppress("unused")
-    private fun <T: Jar> handleAntTask(target: Project, task: Task, artifactTask: T, filesOrFolders: Set<String>,
-                                       upToDateProperty: String) {
-        task.ant.withGroovyBuilder {
-            filesOrFolders.forEach {
-                "uptodate"(
-                    "property" to upToDateProperty,
-                    "srcfile" to "${target.projectDir}/$it",
-                    "targetfile" to "${artifactTask.destinationDirectory}/${artifactTask.archiveFileName}"
+        // 9) implement each configuration based on its content
+        antSimpleConfigurations?.let {
+            it.forEach { config ->
+                Ant.inputOutputTask(
+                    target,
+                    target.tasks.getByName(config.taskName),
+                    config.propertyName,
+                    config.inputFilesOrFolders.flattenFilesOrFolders(target),
+                    config.outputFilesOrFolders.flattenFilesOrFolders(target),
+                    antUseSrcResourcesBlock
                 )
             }
         }
-    }
 
+        antAdvancedConfigurations?.let {
+            it.forEach { config ->
+                val evaluation = Ant.inputArtifactTask(
+                    target,
+                    target.tasks.getByName(config.taskName),
+                    config.propertyName,
+                    config.inputFilesOrFolders.flattenFilesOrFolders(target),
+                    target.tasks.getByName(config.artifactTaskName) as Jar,
+                    antEvaluateManifest,
+                    antUseFileOrFolderHashes
+                )
 
-    /**
-     *  Handle a bundled task with dependencies
-     *
-     *  @param target the project which the plugin is applied to, may be sub-project
-     *  @param task bundle task in project
-     *  @param filesOrFolders necessary dependencies for bundle task
-     *  @param evaluateManifest if Manifest of output bundle should be evaluated when found from last build
-     *  @param useFileOrFolderHashes if commit hashes of files or folders should be stored / evaluated in manifest file
-     */
-    private fun <T: Jar> handleBundledTask(target: Project, task: T, filesOrFolders: Set<String>,
-                                           evaluateManifest: Boolean, useFileOrFolderHashes: Boolean) {
-        // set JAR / WAR / EAR manifest attributes including current commit hash
-        task.manifest.attributes[JarHandler.attributeCommitHash] = Git.hash(target.projectDir)
-        if (useFileOrFolderHashes) {
-            filesOrFolders.forEach {
-                task.manifest.attributes[
-                    JarHandler.attributeFileOrFolderHashTemplate.replace("FOFHASH", SHA256.hash(it))
-                ] = Git.commit(target.projectDir, it)
+                when {
+                    !evaluation -> target.logger.warn(
+                        "[${this::class.simpleName}.${this::apply.name}] Evaluation for advanced Ant configuration " +
+                        "'$config' concluded with not UP-TO-DATE!"
+                    )
+                }
             }
         }
 
-        // set UP-TO-DATE status & remove dependsOn using evaluation function
-        if (evaluateConditionForBundledTask(
-                target, target.file("${task.destinationDirectory}/${task.archiveFileName}"),
-                filesOrFolders, evaluateManifest //, useFileOrFolderHashes
-            )) {
-            target.afterEvaluate {
-                task.dependsOn.clear()
-                task.outputs.upToDateWhen { true }
-            }
-        }
-    }
+        gradleSimpleConfigurations?.let {
+            it.forEach { config ->
+                val inputTask = target.tasks.getByName(config.taskName)
+                val evaluation = Gradle.inputOutputTask(
+                    target, inputTask, "Gradle_${config.taskName}_uptodate",
+                    config.inputFilesOrFolders.flattenFilesOrFolders(target),
+                    config.outputFilesOrFolders.flattenFilesOrFolders(target)
+                )
 
-
-    /**
-     *  Handle normal task but with a bundled artifact task with dependencies
-     *
-     *  @param target the project which the plugin is applied to, may be sub-project
-     *  @param task normal task
-     *  @param artifactTask bundle task in project
-     *  @param filesOrFolders necessary dependencies for bundle task
-     *  @param evaluateManifest if Manifest of output bundle should be evaluated when found from last build
-     *  @param useFileOrFolderHashes if commit hashes of files or folders should be stored / evaluated in manifest file
-     */
-    private fun <T: Jar> handleBundledArtifactTask(target: Project, task: Task, artifactTask: T,
-                                                   filesOrFolders: Set<String>, evaluateManifest: Boolean,
-                                                   useFileOrFolderHashes: Boolean) {
-        // set artifact tasks JAR / WAR / EAR manifest attributes including current commit hash
-        artifactTask.manifest.attributes[JarHandler.attributeCommitHash] = Git.hash(target.projectDir)
-        if (useFileOrFolderHashes) {
-            filesOrFolders.forEach {
-                artifactTask.manifest.attributes[
-                    JarHandler.attributeFileOrFolderHashTemplate.replace("FOFHASH", SHA256.hash(it))
-                ] = Git.commit(target.projectDir, it)
+                when {
+                    evaluation && gradleSkipTaskGraph -> inputTask.dependsOn.clear()
+                    !evaluation -> target.logger.warn(
+                        "[${this::class.simpleName}.${this::apply.name}] Evaluation for simple Gradle configuration " +
+                        "'$config' concluded with not UP-TO-DATE!"
+                    )
+                }
             }
         }
 
-        // set UP-TO-DATE status & remove dependsOn using evaluation function
-        if (evaluateConditionForBundledTask(
-                target, target.file("${artifactTask.destinationDirectory}/${artifactTask.archiveFileName}"),
-                filesOrFolders, evaluateManifest //, useFileOrFolderHashes
-            )) {
-            target.afterEvaluate {
-                task.dependsOn.clear()
-                task.outputs.upToDateWhen { true }
+        gradleAdvancedConfigurations?.let {
+            it.forEach { config ->
+                val inputTask = target.tasks.getByName(config.taskName)
+                val evaluation = Gradle.inputArtifactTask(
+                    target, inputTask, "Gradle_${config.taskName}_uptodate",
+                    config.inputFilesOrFolders.flattenFilesOrFolders(target),
+                    target.tasks.getByName(config.artifactTaskName) as Jar,
+                    gradleEvaluateManifest,
+                    gradleUseFileOrFolderHashes
+                )
+
+                when {
+                    evaluation && gradleSkipTaskGraph -> inputTask.dependsOn.clear()
+                    !evaluation -> target.logger.warn(
+                        "[${this::class.simpleName}.${this::apply.name}] Evaluation for advanced Gradle " +
+                        "configuration '$config' concluded with not UP-TO-DATE!"
+                    )
+                }
             }
         }
-    }
-
-
-    /**
-     *  Evaluates a UP-TO-DATE condition for a bundled task with given output file
-     *
-     *  @param target the project which the plugin is applied to, may be sub-project
-     *  @param bundleFile file object of bundled task output
-     *  @param filesOrFolders necessary dependencies bundled task
-     *  @param evaluateManifest if Manifest of output bundle should be evaluated when found from last build
-     *  @return true when conditions fulfilled for bundle task to be UP-TO-DATE, false otherwise
-     *
-     *  TODO: Extend function with useFileOrFolderHashes!
-     */
-    private fun evaluateConditionForBundledTask(target: Project, bundleFile : File, filesOrFolders : Set<String>,
-                                                evaluateManifest: Boolean) : Boolean {
-        // return false if:
-        // - JAR / WAR / EAR file doesn't exist
-        // - at least one dependency (file or folder) has differences to last commit
-        when {
-            !bundleFile.exists()                                    -> return false
-            !filesOrFolders.all { Git.diff(target.projectDir, it) } -> return false
-        }
-
-        // get path of JAR / WAR / EAR file relative to project dir
-        val bundleRelativePath = Paths.get(target.projectDir.absolutePath).relativize(
-            Paths.get(bundleFile.absolutePath)
-        ).toString()
-
-        // check if JAR / WAR / EAR is part of Git repository and therefore has a commit hash of last change
-        if (Git.tracked(target.projectDir, bundleRelativePath)) {
-            val bundleCommitHash = Git.commit(target.projectDir, bundleRelativePath)!!
-
-            // return true if:
-            // - commit of last changes on JAR / WAR / EAR file is the same or newer than commit of last changes on
-            //   every dependency
-            // -> return false otherwise
-            // INFO: Ignore if there is a diff in JAR / WAR / EAR file (could be changes due to re-running Gradle JAR /
-            //       WAR / EAR task)!
-            return when {
-                filesOrFolders.all {
-                    val fileOrFolderHash = Git.commit(target.projectDir, it)!!
-                    with (fileOrFolderHash) {
-                        this == bundleCommitHash || Git.isParentCommit(
-                            target.projectDir, this, bundleCommitHash
-                        )
-                    }
-                }       -> true
-                else    -> false
-            }
-        }
-
-        // check if evaluateManifest is set and therefore evaluation of Manifest attribute should be done
-        if (evaluateManifest) {
-            val bundleManifestHash = JarHandler(bundleFile).getCommitHash()
-            bundleManifestHash ?: return false
-
-            // return true if:
-            // - commit in JAR / WAR / EAR Manifest is the same or newer than commit of last changes on every dependency
-            return when {
-                filesOrFolders.all {
-                    val fileOrFolderHash = Git.commit(target.projectDir, it)!!
-                    with (fileOrFolderHash) {
-                        this == bundleManifestHash || Git.isParentCommit(
-                            target.projectDir, this, bundleManifestHash
-                        )
-                    }
-                }       -> true
-                else    -> false
-            }
-        }
-
-        // JAR / WAR / EAR file exists (even tho not checked if newer than dependencies, just assumed) and dependencies
-        // (files or folder) have no open differences to last commit
-        return true
     }
 }

@@ -1,7 +1,10 @@
-package com.github.thahnen
+package com.github.thahnen.util
 
 import java.io.File
 import java.io.IOException
+
+import com.github.thahnen.invokeCommand
+import com.github.thahnen.invokeCommandWithOutput
 
 
 /**
@@ -12,7 +15,7 @@ import java.io.IOException
  *
  *  @author thahnen
  */
-class Git {
+sealed class Git {
 
     companion object {
         /**
